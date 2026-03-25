@@ -4,13 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TexPrint</title>
-<link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#e8401c">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="TexPrint">
-<link rel="apple-touch-icon" href="/icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#0f0f0f;--surface:#1a1a1a;--surface2:#242424;--border:#2e2e2e;--accent:#e8401c;--accent2:#ff6b47;--text:#f0ede8;--muted:#777;--success:#4caf7d;--warn:#e8a01c}
@@ -111,6 +104,15 @@ input[type=file]{display:none}
 .img-upload-label{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;border:1px dashed var(--border);padding:16px;cursor:pointer;transition:border-color .2s;font-size:12px;color:var(--muted);text-align:center;margin-bottom:16px}
 .img-upload-label:hover{border-color:var(--accent)}.img-preview{width:70px;height:70px;object-fit:cover;border:1px solid var(--border)}
 .color-add-row{display:flex;gap:8px;align-items:flex-end;margin-bottom:10px}.color-add-row > div{flex:1}.color-add-row input{margin-bottom:0}
+
+.promet-card{background:var(--surface);border:1px solid var(--border);padding:20px 24px}
+.promet-card-label{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:6px}
+.promet-card-value{font-family:"Bebas Neue",sans-serif;font-size:32px;letter-spacing:.05em}
+.promet-card-sub{font-size:11px;color:var(--muted);margin-top:3px}
+.promet-card.gotovina .promet-card-value{color:var(--success)}
+.promet-card.virman .promet-card-value{color:var(--warn)}
+.promet-card.total .promet-card-value{color:var(--accent)}
+
 #toast{position:fixed;bottom:28px;right:28px;color:#fff;padding:12px 22px;font-size:13px;font-weight:600;letter-spacing:.05em;z-index:999;transform:translateY(70px);opacity:0;transition:all .3s ease}
 #toast.show{transform:translateY(0);opacity:1}#toast.t-ok{background:var(--success)}#toast.t-err{background:var(--accent)}#toast.t-warn{background:var(--warn)}
 .loader{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
@@ -137,6 +139,7 @@ input[type=file]{display:none}
   <div class="header-nav">
     <button class="nav-btn active" id="navOrder">Nova narudžba</button>
     <button class="nav-btn" id="navOrders">Narudžbe</button>
+    <button class="nav-btn" id="navPromet">Promet</button>
     <button class="nav-btn" id="navCatalog" style="display:none">Katalog</button>
     <button class="nav-btn" id="navUsers" style="display:none">Korisnici</button>
   </div>
@@ -205,6 +208,32 @@ input[type=file]{display:none}
     <button class="btn btn-outline btn-sm" id="btnRefreshOrders" style="align-self:flex-end;margin-bottom:0">↻ Osvježi</button>
   </div>
   <div class="orders-list" id="ordersList"></div>
+</div>
+
+
+<div class="screen" id="screenPromet">
+  <div class="page-title">Promet</div>
+  <div class="page-sub">Pregled prihoda po narudžbama</div>
+  <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;align-items:flex-end">
+    <div style="flex:1;min-width:140px"><label>Datum od</label><input type="date" id="prometFrom"></div>
+    <div style="flex:1;min-width:140px"><label>Datum do</label><input type="date" id="prometTo"></div>
+    <div style="flex:1;min-width:140px"><label>Plaćanje</label>
+      <select id="prometFilter">
+        <option value="">Sve</option>
+        <option value="Gotovina">Gotovina</option>
+        <option value="Virman / Transakcija">Virman</option>
+      </select>
+    </div>
+    <button class="btn btn-outline btn-sm" id="btnRefreshPromet" style="align-self:flex-end;margin-bottom:0">↻ Osvježi</button>
+  </div>
+
+  <!-- Sumarni kartice -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:28px" id="prometCards"></div>
+
+  <!-- Tabela -->
+  <div class="summary-card" style="padding:0;overflow:hidden">
+    <table class="data-table" style="margin-bottom:0" id="prometTable"></table>
+  </div>
 </div>
 
 <div class="screen" id="screenCatalog">
@@ -335,7 +364,7 @@ function showToast(msg, type) {
 function closeOverlay(id){ $(id).classList.remove("open"); }
 function daysSince(ms){ return Math.floor((Date.now()-ms)/(86400000)); }
 function hideAllScreens(){
-  ["screenOrder","screenArticles","screenOrders","screenCatalog","screenUsers"]
+  ["screenOrder","screenArticles","screenOrders","screenPromet","screenCatalog","screenUsers"]
     .forEach(id => $(id).style.display = "none");
 }
 
@@ -343,13 +372,14 @@ function hideAllScreens(){
 function navTo(key) {
   hideAllScreens();
   document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
-  const navMap = {order:"navOrder",orders:"navOrders",catalog:"navCatalog",users:"navUsers"};
+  const navMap = {order:"navOrder",orders:"navOrders",promet:"navPromet",catalog:"navCatalog",users:"navUsers"};
   if(navMap[key]) $(navMap[key]).classList.add("active");
-  const scrMap = {order:"screenOrder",articles:"screenArticles",orders:"screenOrders",catalog:"screenCatalog",users:"screenUsers"};
+  const scrMap = {order:"screenOrder",articles:"screenArticles",orders:"screenOrders",promet:"screenPromet",catalog:"screenCatalog",users:"screenUsers"};
   const el = $(scrMap[key]);
   if(el) el.style.display = "block";
   if(key==="order") $("orderDate").value = new Date().toLocaleDateString("bs-BA",{day:"2-digit",month:"2-digit",year:"numeric"});
   if(key==="orders") renderOrdersList();
+  if(key==="promet") renderPromet();
   if(key==="catalog") renderCatalogSidebar();
   if(key==="users") renderUsersTable();
 }
@@ -403,6 +433,7 @@ $("logoutBtn").onclick = doLogout;
 $("loginPass").onkeydown = e => { if(e.key==="Enter") doLogin(); };
 $("navOrder").onclick   = () => navTo("order");
 $("navOrders").onclick  = () => navTo("orders");
+$("navPromet").onclick  = () => navTo("promet");
 $("navCatalog").onclick = () => navTo("catalog");
 $("navUsers").onclick   = () => navTo("users");
 
@@ -618,6 +649,7 @@ function openOrderModal(cat,prod) {
   } else {
     html+='<label>Količina (kom)</label><input type="number" id="simpleQty" min="1" placeholder="1">';
   }
+  html += '<hr class="divider"><label>Cijena po komadu (KM)</label><input type="number" id="cijenaKom" min="0" step="0.01" placeholder="0.00">';
   $("artModalBody").innerHTML=html;
   // attach color chip events
   document.querySelectorAll("#artModalBody .cp-chip").forEach(chip=>{
@@ -661,7 +693,10 @@ $("btnAddToOrder").onclick = function() {
       const v=parseInt($("sz_"+s)?.value)||0; if(v>0) parts.push(s+"="+v);
     });
     if(!parts.length){alert("Unesite barem jednu veličinu.");return;}
+    const cijenaTex = parseFloat($("cijenaKom")?.value)||0;
+    const totalQtyTex = parts.reduce((s,p)=>s+parseInt(p.split("=")[1]),0);
     detail=parts.join(", ")+" | Usluga: "+usluga; colorName=selectedColor;
+    Object.assign({}, {_cijena:cijenaTex, _kolicina:totalQtyTex}); // will be set below
   } else if(type==="color-qty"){
     if(!selectedColor){alert("Izaberite boju.");return;}
     const qty=parseInt($("simpleQty").value)||0;
@@ -672,8 +707,15 @@ $("btnAddToOrder").onclick = function() {
     if(qty<1){alert("Unesite količinu.");return;}
     detail="Kom: "+qty;
   }
+  const cijena = parseFloat($("cijenaKom")?.value)||0;
+  // Calculate total quantity from detail string
+  let kolicina = 0;
+  const komMatch = detail.match(/Kom: (\d+)/);
+  if(komMatch) kolicina = parseInt(komMatch[1]);
+  else { detail.split("|")[0].split(",").forEach(p=>{ const m=p.match(/=(\d+)/); if(m) kolicina+=parseInt(m[1]); }); }
+
   orderItems=orderItems.filter(i=>!(i.prodId===prod.id&&i.cat===cat));
-  orderItems.push({prodId:prod.id,cat,name:prod.name,color:colorName,detail,icon:CATALOG[cat].icon});
+  orderItems.push({prodId:prod.id,cat,name:prod.name,color:colorName,detail,icon:CATALOG[cat].icon,cijena,kolicina});
   closeOverlay("overlayArticle");
   renderProdGrid(activeCat);
   renderSummary();
@@ -687,7 +729,9 @@ function renderSummary() {
   orderItems.forEach((item,idx)=>{
     const div=document.createElement("div"); div.className="sum-item";
     div.innerHTML='<div><div style="font-weight:600">'+item.icon+" "+item.name+'</div>'
-      +'<div class="sum-item-detail">'+(item.color?"Boja: "+item.color+" · ":"")+item.detail+'</div></div>';
+      +'<div class="sum-item-detail">'+(item.color?"Boja: "+item.color+" · ":"")+item.detail
+      +(item.cijena?'<span style="margin-left:8px;color:var(--warn);font-weight:600">'+item.cijena.toFixed(2)+' KM/kom · Ukupno: '+(item.cijena*item.kolicina).toFixed(2)+' KM</span>':'')
+      +'</div></div>';
     const btn=document.createElement("button"); btn.className="btn btn-sm btn-danger"; btn.textContent="✕";
     btn.onclick=()=>{ orderItems.splice(idx,1); renderSummary(); renderProdGrid(activeCat); };
     div.appendChild(btn); items.appendChild(div);
@@ -776,6 +820,104 @@ function openOrderDetail(o) {
   body.appendChild(actDiv);
 
   $("overlayOrderDetail").classList.add("open");
+}
+
+
+// ── PROMET ─────────────────────────────────────────
+$("btnRefreshPromet").onclick = () => { fbLoadOrders().then(renderPromet); };
+$("prometFrom").onchange = renderPromet;
+$("prometTo").onchange   = renderPromet;
+$("prometFilter").onchange = renderPromet;
+
+function renderPromet() {
+  const from = $("prometFrom")?.value;
+  const to   = $("prometTo")?.value;
+  const filt = $("prometFilter")?.value || "";
+
+  let orders = allOrders.filter(o => {
+    if(filt && !o.payment.includes(filt === "Gotovina" ? "Gotovina" : "Virman")) return false;
+    if(from && o.createdAtMs < new Date(from).getTime()) return false;
+    if(to   && o.createdAtMs > new Date(to).getTime()+86400000) return false;
+    return true;
+  });
+
+  // Calculate totals per order
+  let sumGotovina = 0, sumVirmanBezPDV = 0, sumPDV = 0;
+
+  const rows = orders.map(o => {
+    const isVirman = o.payment.includes("Virman");
+    let orderTotal = 0;
+    (o.items||[]).forEach(item => {
+      orderTotal += (item.cijena||0) * (item.kolicina||0);
+    });
+
+    let bezPDV=0, pdv=0, sTotal=0;
+    if(isVirman){
+      bezPDV  = orderTotal;
+      pdv     = Math.round(bezPDV * 0.17 * 100)/100;
+      sTotal  = Math.round((bezPDV + pdv)*100)/100;
+      sumVirmanBezPDV += bezPDV;
+      sumPDV          += pdv;
+    } else {
+      sTotal = orderTotal;
+      sumGotovina += orderTotal;
+    }
+    return {o, isVirman, bezPDV, pdv, sTotal, orderTotal};
+  });
+
+  const sumUkupno = sumGotovina + sumVirmanBezPDV + sumPDV;
+
+  // Cards
+  const cards = $("prometCards");
+  cards.innerHTML =
+    '<div class="promet-card gotovina"><div class="promet-card-label">Gotovina</div><div class="promet-card-value">'+sumGotovina.toFixed(2)+' KM</div><div class="promet-card-sub">bez PDV-a</div></div>' +
+    '<div class="promet-card virman"><div class="promet-card-label">Virman – bez PDV</div><div class="promet-card-value">'+sumVirmanBezPDV.toFixed(2)+' KM</div><div class="promet-card-sub">osnovica</div></div>' +
+    '<div class="promet-card virman"><div class="promet-card-label">PDV (17%)</div><div class="promet-card-value">'+sumPDV.toFixed(2)+' KM</div><div class="promet-card-sub">na virman narudžbe</div></div>' +
+    '<div class="promet-card total"><div class="promet-card-label">Ukupno</div><div class="promet-card-value">'+sumUkupno.toFixed(2)+' KM</div><div class="promet-card-sub">gotovina + virman s PDV</div></div>';
+
+  // Table
+  const tbl = $("prometTable");
+  tbl.innerHTML = "";
+  const thead = document.createElement("thead");
+  thead.innerHTML = "<tr><th>Naručilac</th><th>Datum</th><th>Plaćanje</th><th>Bez PDV</th><th>PDV 17%</th><th>Za naplatu</th><th>Status</th></tr>";
+  tbl.appendChild(thead);
+  const tbody = document.createElement("tbody");
+
+  if(!rows.length){
+    const tr=document.createElement("tr");
+    tr.innerHTML='<td colspan="7" style="text-align:center;color:var(--muted);padding:32px">Nema narudžbi za odabrani period.</td>';
+    tbody.appendChild(tr);
+  } else {
+    rows.forEach(({o,isVirman,bezPDV,pdv,sTotal,orderTotal})=>{
+      const tr=document.createElement("tr");
+      tr.style.cursor="pointer";
+      const st = orderStatus(o);
+      const stColor = {open:"var(--muted)",done:"var(--success)",overdue:"var(--accent)"}[st];
+      const stLabel = {open:"Otvorena",done:"Završena",overdue:"Zakašnjela"}[st];
+      tr.innerHTML =
+        "<td><strong>"+o.client+"</strong></td>"+
+        "<td style='color:var(--muted)'>"+o.date+"</td>"+
+        "<td>"+o.payment+"</td>"+
+        (isVirman
+          ? "<td>"+bezPDV.toFixed(2)+" KM</td><td style='color:var(--warn)'>"+pdv.toFixed(2)+" KM</td><td><strong>"+sTotal.toFixed(2)+" KM</strong></td>"
+          : "<td colspan='2' style='color:var(--muted)'>–</td><td><strong>"+sTotal.toFixed(2)+" KM</strong></td>")+
+        "<td><span style='color:"+stColor+";font-weight:600'>"+stLabel+"</span></td>";
+      tr.onclick = () => openOrderDetail(o);
+      tbody.appendChild(tr);
+    });
+
+    // Totals row
+    const tfoot=document.createElement("tr");
+    tfoot.style.cssText="background:var(--surface2);font-weight:700";
+    tfoot.innerHTML =
+      "<td colspan='3' style='color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.1em'>UKUPNO</td>"+
+      "<td>"+sumVirmanBezPDV.toFixed(2)+" KM</td>"+
+      "<td style='color:var(--warn)'>"+sumPDV.toFixed(2)+" KM</td>"+
+      "<td style='color:var(--accent)'>"+sumUkupno.toFixed(2)+" KM</td>"+
+      "<td></td>";
+    tbody.appendChild(tfoot);
+  }
+  tbl.appendChild(tbody);
 }
 
 // ── CATALOG ────────────────────────────────────────
@@ -973,14 +1115,6 @@ $("btnCreateUser").onclick = async function(){
 $("orderDate").value = new Date().toLocaleDateString("bs-BA",{day:"2-digit",month:"2-digit",year:"numeric"});
 
 }); // end DOMContentLoaded
-</script>
-
-<script>
-if("serviceWorker" in navigator){
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch(e => console.warn("SW:", e));
-  });
-}
 </script>
 </body>
 </html>
